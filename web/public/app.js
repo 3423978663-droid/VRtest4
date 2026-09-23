@@ -190,7 +190,7 @@
       layoutActive();
       if (img.confirmed && img.ocr === 'pending' && !img._prepared) {
         img._prepared = true;
-        prepareImage(img);
+        enqueueOCR(img);
       }
     };
     if (el.src !== img.url) el.src = img.url;
@@ -245,7 +245,7 @@
     strip.appendChild(add);
   }
 
-  // ---------- 图片预处理：轻微倾斜自动纠正 ----------
+  // ---------- 图片加载与压缩 ----------
   function loadImageToCanvas(url, maxDim) {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -266,73 +266,10 @@
     });
   }
 
-  function estimateSkew(canvas) {
-    const w = canvas.width, h = canvas.height;
-    const x = canvas.getContext('2d', { willReadFrequently: true });
-    const data = x.getImageData(0, 0, w, h).data;
-    let n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
-    for (let y = 0; y < h; y += 2) {
-      for (let i = 0; i < w; i += 2) {
-        const j = (y * w + i) * 4;
-        const g = 0.299 * data[j] + 0.587 * data[j + 1] + 0.114 * data[j + 2];
-        if (g < 140) {
-          n++; sx += i; sy += y; sxx += i * i; syy += y * y; sxy += i * y;
-        }
-      }
-    }
-    if (n < 100) return 0;
-    const mx = sx / n, my = sy / n;
-    const covxx = sxx / n - mx * mx;
-    const covyy = syy / n - my * my;
-    const covxy = sxy / n - mx * my;
-    return 0.5 * Math.atan2(2 * covxy, covxx - covyy);
-  }
-
-  function rotateCanvas(src, angle) {
-    const w = src.width, h = src.height;
-    const cos = Math.cos(angle), sin = Math.sin(angle);
-    const nw = Math.ceil(Math.abs(w * cos) + Math.abs(h * sin));
-    const nh = Math.ceil(Math.abs(w * sin) + Math.abs(h * cos));
-    const c = document.createElement('canvas');
-    c.width = nw; c.height = nh;
-    const x = c.getContext('2d');
-    x.fillStyle = '#ffffff';
-    x.fillRect(0, 0, nw, nh);
-    x.translate(nw / 2, nh / 2);
-    x.rotate(angle);
-    x.drawImage(src, -w / 2, -h / 2);
-    return c;
-  }
-
   function canvasToBlobUrl(c) {
     return new Promise((resolve, reject) => {
-      c.toBlob((b) => b ? resolve(URL.createObjectURL(b)) : reject(new Error('blob')), 'image/jpeg', 0.92);
+      c.toBlob((b) => b ? resolve(URL.createObjectURL(b)) : reject(new Error('blob')), 'image/jpeg', 0.85);
     });
-  }
-
-  async function prepareImage(img) {
-    try {
-      const small = await loadImageToCanvas(img.url, 600);
-      const angle = estimateSkew(small);
-      if (Math.abs(angle) < 0.004) {
-        enqueueOCR(img);
-        return;
-      }
-      const full = await loadImageToCanvas(img.url, 2400);
-      const rot = rotateCanvas(full, -angle);
-      const deskewUrl = await canvasToBlobUrl(rot);
-      if (img.thumbUrl == null) img.thumbUrl = img.url;
-      img.url = deskewUrl;
-      img.nat = { w: rot.width, h: rot.height };
-      if (img === activeImage()) {
-        const el = $('image');
-        el.onload = () => layoutActive();
-        el.src = deskewUrl;
-      }
-      enqueueOCR(img);
-    } catch (e) {
-      enqueueOCR(img);
-    }
   }
 
   // ---------- 照片确认 / 旋转 / 裁剪 / 压缩 ----------
@@ -386,7 +323,7 @@
     $('editModal').hidden = false;
     $('editHint').textContent = '正在读取照片…';
     try {
-      const c = await loadImageToCanvas(img.thumbUrl || img.url, 2400);
+      const c = await loadImageToCanvas(img.thumbUrl || img.url, 1600);
       setEditCanvas(c);
       $('editHint').textContent = '方向不对就点左转/右转；需要裁边就点“框选裁剪”，然后在图上拖动。';
     } catch (e) {
@@ -478,7 +415,7 @@
         el.src = url;
       }
       editImg = null; editCanvas = null; cropRect = null; cropping = false;
-      prepareImage(img);
+      enqueueOCR(img);
     } catch (e) {}
   }
 

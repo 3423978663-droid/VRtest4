@@ -102,7 +102,7 @@
         statusEl.textContent = '正在处理照片…';
         statusEl.className = '';
         try {
-          const blob = await compress(file, 2200, 0.85);
+          const blob = await compress(file, 1800, 0.8);
           statusEl.textContent = '上传中…';
           const res = await fetch('/api/upload/' + encodeURIComponent(session), {
             method: 'POST',
