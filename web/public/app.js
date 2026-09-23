@@ -103,58 +103,6 @@
     return result;
   }
 
-  async function lookupOnline(word) {
-    try {
-      const r = await fetch('/api/dict?word=' + encodeURIComponent(word) + '&online=1');
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'failed');
-      return data;
-    } catch (e) {
-      return lookupOnlineDirect(word);
-    }
-  }
-
-  async function lookupOnlineDirect(word) {
-    let phonetic = '';
-    const senses = [];
-    try {
-      const r = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(word));
-      if (r.ok) {
-        const arr = await r.json();
-        const entry = Array.isArray(arr) ? arr[0] : null;
-        if (entry) {
-          phonetic = ((entry.phonetics || []).find((p) => p && p.text) || {}).text || '';
-          for (const m of entry.meanings || []) {
-            for (const d of m.definitions || []) {
-              senses.push({
-                partOfSpeech: m.partOfSpeech || '',
-                definitionEn: d.definition || '',
-                definitionZh: '',
-                example: d.example || '',
-              });
-            }
-          }
-        }
-      }
-    } catch (e) {}
-
-    let wordZh = '';
-    try {
-      const r = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(word) + '&langpair=en|zh-CN');
-      if (r.ok) {
-        const j = await r.json();
-        wordZh = String(j && j.responseData && j.responseData.translatedText || '').trim();
-      }
-    } catch (e) {}
-
-    if (senses.length === 0) {
-      if (wordZh) senses.push({ partOfSpeech: '', definitionEn: '', definitionZh: wordZh, example: '' });
-      else throw new Error('not found');
-    }
-    for (const s of senses) if (!s.definitionZh) s.definitionZh = wordZh;
-    return { word, phonetic, senses, source: 'online' };
-  }
-
   async function detectBackend() {
     try {
       const ctrl = new AbortController();
@@ -191,9 +139,11 @@
     const hadActive = activeId;
     const startIndex = images.length;
     files.forEach((f) => {
+      const url = URL.createObjectURL(f);
       images.push({
         id: newImageId(),
-        url: URL.createObjectURL(f),
+        url,
+        thumbUrl: url,
         name: f.name || '照片',
         nat: { w: 0, h: 0 },
         words: [],
@@ -203,15 +153,14 @@
     showViewer();
     const firstNew = images[startIndex].id;
     selectImage(hadActive || firstNew);
-    const act = activeImage();
-    if (act) enqueueOCR(act);
-    images.forEach((img) => { if (img !== act) enqueueOCR(img); });
   }
 
   function removeImage(id) {
     const idx = images.findIndex((i) => i.id === id);
     if (idx < 0) return;
-    try { URL.revokeObjectURL(images[idx].url); } catch (e) {}
+    for (const u of [images[idx].url, images[idx].thumbUrl]) {
+      if (u && u.startsWith('blob:')) { try { URL.revokeObjectURL(u); } catch (e) {} }
+    }
     images.splice(idx, 1);
     if (!images.length) {
       activeId = null;
@@ -233,6 +182,10 @@
       img.nat = { w: el.naturalWidth || 0, h: el.naturalHeight || 0 };
       if (!img.nat.w || !img.nat.h) return;
       layoutActive();
+      if (img.ocr === 'pending' && !img._prepared) {
+        img._prepared = true;
+        prepareImage(img);
+      }
     };
     if (el.src !== img.url) el.src = img.url;
     else if (img.nat && img.nat.w) layoutActive();
@@ -240,7 +193,6 @@
     renderWords();
     renderThumbstrip();
     updateOcrStatus();
-    if (img.ocr === 'pending') enqueueOCR(img);
   }
 
   function layoutActive() {
@@ -265,7 +217,7 @@
       const d = document.createElement('div');
       d.className = 'thumb' + (img.id === activeId ? ' active' : '');
       const im = document.createElement('img');
-      im.src = img.url;
+      im.src = img.thumbUrl || img.url;
       im.alt = img.name;
       const del = document.createElement('button');
       del.className = 'thumb-del';
@@ -283,6 +235,96 @@
     add.title = '添加图片';
     add.addEventListener('click', () => $('fileInput').click());
     strip.appendChild(add);
+  }
+
+  // ---------- 图片预处理：轻微倾斜自动纠正 ----------
+  function loadImageToCanvas(url, maxDim) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const w0 = img.naturalWidth || 1;
+        const h0 = img.naturalHeight || 1;
+        const scale = Math.min(1, maxDim / Math.max(w0, h0));
+        const w = Math.max(1, Math.round(w0 * scale));
+        const h = Math.max(1, Math.round(h0 * scale));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const x = c.getContext('2d', { willReadFrequently: true });
+        x.drawImage(img, 0, 0, w, h);
+        resolve(c);
+      };
+      img.onerror = () => reject(new Error('image load failed'));
+      img.src = url;
+    });
+  }
+
+  function estimateSkew(canvas) {
+    const w = canvas.width, h = canvas.height;
+    const x = canvas.getContext('2d', { willReadFrequently: true });
+    const data = x.getImageData(0, 0, w, h).data;
+    let n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+    for (let y = 0; y < h; y += 2) {
+      for (let i = 0; i < w; i += 2) {
+        const j = (y * w + i) * 4;
+        const g = 0.299 * data[j] + 0.587 * data[j + 1] + 0.114 * data[j + 2];
+        if (g < 140) {
+          n++; sx += i; sy += y; sxx += i * i; syy += y * y; sxy += i * y;
+        }
+      }
+    }
+    if (n < 100) return 0;
+    const mx = sx / n, my = sy / n;
+    const covxx = sxx / n - mx * mx;
+    const covyy = syy / n - my * my;
+    const covxy = sxy / n - mx * my;
+    return 0.5 * Math.atan2(2 * covxy, covxx - covyy);
+  }
+
+  function rotateCanvas(src, angle) {
+    const w = src.width, h = src.height;
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const nw = Math.ceil(Math.abs(w * cos) + Math.abs(h * sin));
+    const nh = Math.ceil(Math.abs(w * sin) + Math.abs(h * cos));
+    const c = document.createElement('canvas');
+    c.width = nw; c.height = nh;
+    const x = c.getContext('2d');
+    x.fillStyle = '#ffffff';
+    x.fillRect(0, 0, nw, nh);
+    x.translate(nw / 2, nh / 2);
+    x.rotate(angle);
+    x.drawImage(src, -w / 2, -h / 2);
+    return c;
+  }
+
+  function canvasToBlobUrl(c) {
+    return new Promise((resolve, reject) => {
+      c.toBlob((b) => b ? resolve(URL.createObjectURL(b)) : reject(new Error('blob')), 'image/jpeg', 0.92);
+    });
+  }
+
+  async function prepareImage(img) {
+    try {
+      const small = await loadImageToCanvas(img.url, 600);
+      const angle = estimateSkew(small);
+      if (Math.abs(angle) < 0.004) {
+        enqueueOCR(img);
+        return;
+      }
+      const full = await loadImageToCanvas(img.url, 2400);
+      const rot = rotateCanvas(full, -angle);
+      const deskewUrl = await canvasToBlobUrl(rot);
+      if (img.thumbUrl == null) img.thumbUrl = img.url;
+      img.url = deskewUrl;
+      img.nat = { w: rot.width, h: rot.height };
+      if (img === activeImage()) {
+        const el = $('image');
+        el.onload = () => layoutActive();
+        el.src = deskewUrl;
+      }
+      enqueueOCR(img);
+    } catch (e) {
+      enqueueOCR(img);
+    }
   }
 
   // ---------- 图片缩放与平移 ----------
@@ -401,11 +443,6 @@
   }
 
   // ---------- 单词卡片 ----------
-  function hasOnlineDetail(data) {
-    return (data.senses || []).some((s) =>
-      (s.definitionEn && s.definitionEn.trim()) || (s.example && s.example.trim()));
-  }
-
   async function openCard(word) {
     currentQuery = word;
     currentResult = null;
@@ -417,62 +454,79 @@
       if (local) {
         currentResult = local;
         renderCard(local);
-        return;
+      } else {
+        renderMissingCard(word);
       }
-      $('cardContent').innerHTML = '<div class="loading">本地词库没有这个词，正在联网查询…</div>';
-      const data = await lookupOnline(word);
-      currentResult = data;
-      renderCard(data);
     } catch (e) {
-      $('cardContent').innerHTML = '<div class="loading">查词失败（本地词库没有这个词，联网也未查到）。</div>';
+      renderMissingCard(word);
     }
   }
 
   function renderCard(data) {
     const already = collected.some((x) => x.word.toLowerCase() === data.word.toLowerCase());
-    const sourceLabel = data.source === 'online' ? '联网查询' : '本地词库';
-    const needEnrich = data.source !== 'online' && !hasOnlineDetail(data);
     const senses = (data.senses || []).map((s) => `
       <div class="card-sense">
         ${s.partOfSpeech ? `<span class="pos">${esc(s.partOfSpeech)}</span>` : ''}
         <span class="zh">${esc(s.definitionZh || '')}</span>
-        ${s.definitionEn ? `<div class="en">${esc(s.definitionEn)}</div>` : ''}
-        ${s.example ? `<div class="ex">例：${esc(s.example)}</div>` : ''}
       </div>`).join('');
     let notes = '';
-    if (data.onlineFailed) notes += '<div class="card-note">联网补充失败，已为你保留本地释义。</div>';
     if (already) notes += '<div class="card-note">这个词已经在本次收获里了。</div>';
     $('cardContent').innerHTML = `
       <div class="card-head">
         <div class="card-word">${esc(data.word)}</div>
-        <span class="card-source">${esc(sourceLabel)}</span>
+        <span class="card-source">本地词库</span>
       </div>
       ${data.phonetic ? `<div class="card-phonetic">${esc(data.phonetic)}</div>` : ''}
       ${data.queryWord ? `<div class="card-original">原词：${esc(data.queryWord)}</div>` : ''}
       ${senses}
       <div class="card-actions">
         <button class="btn btn-primary" id="addBtn" ${already ? 'disabled' : ''}>${already ? '已加入本次收获' : '加入本次收获'}</button>
-        ${needEnrich ? '<button class="btn" id="enrichBtn">联网补充例句/英文释义</button>' : ''}
       </div>
       ${notes}`;
     if (!already) $('addBtn').addEventListener('click', () => addWord(currentResult));
-    const eb = $('enrichBtn');
-    if (eb) eb.addEventListener('click', enrichCard);
   }
 
-  async function enrichCard() {
-    const word = currentQuery || (currentResult && currentResult.word);
-    if (!word) return;
-    const btn = $('enrichBtn');
-    if (btn) { btn.disabled = true; btn.textContent = '联网补充中…'; }
-    try {
-      const data = await lookupOnline(word);
-      if (!data.phonetic && currentResult && currentResult.phonetic) data.phonetic = currentResult.phonetic;
-      currentResult = data;
-      renderCard(data);
-    } catch (e) {
-      if (btn) { btn.disabled = false; btn.textContent = '联网补充失败，点此重试'; }
+  function renderMissingCard(word) {
+    currentResult = null;
+    $('cardContent').innerHTML = `
+      <div class="card-head"><div class="card-word">${esc(word)}</div></div>
+      <div class="card-note">本地词库里没有这个词。</div>
+      <div class="card-actions">
+        <button class="btn btn-primary" id="manualRecordBtn">手动记录这个词</button>
+        <button class="btn" id="closeMissingBtn">关闭</button>
+      </div>`;
+    $('manualRecordBtn').addEventListener('click', () => {
+      $('cardModal').hidden = true;
+      openManualRecord(word);
+    });
+    $('closeMissingBtn').addEventListener('click', () => { $('cardModal').hidden = true; });
+  }
+
+  function openManualRecord(word) {
+    $('mrWord').value = word || '';
+    $('mrMeaning').value = '';
+    $('mrPos').value = '';
+    $('manualRecordModal').hidden = false;
+    setTimeout(() => $('mrMeaning').focus(), 50);
+  }
+
+  function saveManualRecord() {
+    const w = String($('mrWord').value || '').trim();
+    const zh = String($('mrMeaning').value || '').trim();
+    const pos = String($('mrPos').value || '');
+    if (!w) { window.alert('请填写单词'); return; }
+    if (!zh) { window.alert('请填写中文释义'); return; }
+    if (collected.some((x) => x.word.toLowerCase() === w.toLowerCase())) {
+      window.alert('这个词已经在本次收获里了。');
+      return;
     }
+    collected.push({
+      word: w,
+      phonetic: '',
+      senses: [{ partOfSpeech: pos, definitionEn: '', definitionZh: zh, example: '' }],
+    });
+    renderList();
+    $('manualRecordModal').hidden = true;
   }
 
   function addWord(data) {
@@ -521,9 +575,14 @@
     exported = true;
   }
 
+  function formatDateTime(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
   function buildPrintArea() {
     const area = $('printArea');
-    const date = new Date().toLocaleString('zh-CN');
+    const timeStr = formatDateTime(new Date());
     const rows = collected.map((item, i) => {
       const senseLines = (item.senses || []).map((s) =>
         `<div class="line"><span class="pos">${esc(s.partOfSpeech || '')}</span><span>${esc(s.definitionZh || '')}</span></div>`
@@ -537,7 +596,11 @@
       </div>`;
     }).join('');
     area.innerHTML = `
-      <div class="pdf-header"><h1>本次收获单词</h1><p>${esc(date)} · 共 ${collected.length} 个</p></div>
+      <div class="pdf-header">
+        <span class="pdf-time">${esc(timeStr)}</span>
+        <h1>本次收获单词</h1>
+        <p>共 ${collected.length} 个</p>
+      </div>
       <div class="pdf-list">${rows}</div>`;
   }
 
@@ -589,11 +652,9 @@
 
   function loadRemoteImage(url) {
     const id = newImageId();
-    images.push({ id, url, name: '手机上传', nat: { w: 0, h: 0 }, words: [], ocr: 'pending' });
+    images.push({ id, url, thumbUrl: url, name: '手机上传', nat: { w: 0, h: 0 }, words: [], ocr: 'pending' });
     showViewer();
     selectImage(id);
-    const img = activeImage();
-    if (img) enqueueOCR(img);
   }
 
   // ---------- 事件绑定 ----------
@@ -614,6 +675,7 @@
 
   $('qrUploadBtn').addEventListener('click', openQR);
   $('exportBtn').addEventListener('click', exportPDF);
+  $('mrSaveBtn').addEventListener('click', saveManualRecord);
   $('manualWordBtn').addEventListener('click', () => {
     const w = (window.prompt('输入要查询的英文单词') || '').trim();
     if (w) openCard(w);
@@ -684,6 +746,7 @@
       const k = e.target.getAttribute('data-close');
       if (k === 'card') $('cardModal').hidden = true;
       if (k === 'qr') { $('qrModal').hidden = true; clearInterval(qrPollTimer); }
+      if (k === 'manualRecord') $('manualRecordModal').hidden = true;
     });
   });
 

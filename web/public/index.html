@@ -21,7 +21,7 @@
       <div class="empty" id="emptyState">
         <div class="empty-icon">📷</div>
         <h2>上传英语阅读题照片</h2>
-        <p>可一次选择多张照片 · 自动识别单词 · 点击即可查词（内置中考/高考/雅思词库）</p>
+        <p>可一次选择多张照片 · 自动识别单词 · 点击即可查词（内置中考/高考/雅思/专四/专八词库）</p>
         <div class="upload-actions">
           <button class="btn btn-primary" id="directUploadBtn">上传照片（可多选）</button>
           <button class="btn" id="qrUploadBtn">手机扫码上传</button>
@@ -83,6 +83,47 @@
       <p class="muted" id="qrHint">手机扫码后拍照上传，电脑端会自动收到并识别。</p>
       <div class="qr-box" id="qrBox"></div>
       <p class="muted small">扫码后手机拍照/选图上传，电脑端会自动收到并识别。</p>
+    </div>
+  </div>
+
+  <!-- 手动记录（词库没有的词） -->
+  <div class="modal" id="manualRecordModal" hidden>
+    <div class="modal-backdrop" data-close="manualRecord"></div>
+    <div class="modal-card">
+      <button class="close" data-close="manualRecord">×</button>
+      <h2>手动记录单词</h2>
+      <p class="muted small">这个词不在本地词库里，自己填一下（音标可以留空）。</p>
+      <div class="mr-form">
+        <label for="mrWord">单词</label>
+        <input type="text" id="mrWord" autocomplete="off">
+
+        <label for="mrPos">词性</label>
+        <select id="mrPos">
+          <option value="">（选择词性）</option>
+          <option value="n.">n. 名词</option>
+          <option value="v.">v. 动词</option>
+          <option value="vt.">vt. 及物动词</option>
+          <option value="vi.">vi. 不及物动词</option>
+          <option value="adj.">adj. 形容词</option>
+          <option value="adv.">adv. 副词</option>
+          <option value="prep.">prep. 介词</option>
+          <option value="conj.">conj. 连词</option>
+          <option value="pron.">pron. 代词</option>
+          <option value="num.">num. 数词</option>
+          <option value="art.">art. 冠词</option>
+          <option value="int.">int. 感叹词</option>
+          <option value="aux.">aux. 助动词</option>
+          <option value="其他">其他</option>
+        </select>
+
+        <label for="mrMeaning">中文释义</label>
+        <input type="text" id="mrMeaning" placeholder="例如：放弃；抛弃" autocomplete="off">
+
+        <div class="card-actions">
+          <button class="btn btn-primary" id="mrSaveBtn">加入本次收获</button>
+          <button class="btn" data-close="manualRecord">取消</button>
+        </div>
+      </div>
     </div>
   </div>
 

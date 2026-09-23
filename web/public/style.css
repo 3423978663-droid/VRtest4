@@ -325,6 +325,18 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .card-note { font-size: 13px; color: var(--muted); margin-top: 10px; }
 .loading { color: var(--muted); padding: 30px 0; text-align: center; }
 
+.mr-form label { display: block; margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
+.mr-form input, .mr-form select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 15px;
+  background: #fff;
+  color: var(--text);
+}
+.mr-form input:focus, .mr-form select:focus { outline: 2px solid rgba(37, 99, 235, .25); }
+
 .qr-box { display: flex; justify-content: center; padding: 16px; }
 .qr-box img, .qr-box canvas { border-radius: 8px; }
 
@@ -340,11 +352,12 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 /* ===== 打印导出排版 ===== */
 @page { size: A4; margin: 16mm 14mm; }
 
-.pdf-header { text-align: center; margin-bottom: 18px; }
+.pdf-header { position: relative; text-align: center; margin-bottom: 18px; }
+.pdf-time { position: absolute; top: 0; right: 0; font-size: 11px; color: #7a8194; }
 .pdf-header h1 { margin: 0; font-size: 24px; letter-spacing: 1px; }
 .pdf-header p { margin: 6px 0 0; color: #7a8194; font-size: 12px; }
 
-.pdf-list { display: flex; flex-direction: column; gap: 8px; }
+.pdf-list { column-count: 2; column-gap: 18px; column-fill: auto; }
 
 .entry {
   display: flex;

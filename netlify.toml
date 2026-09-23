@@ -9,11 +9,6 @@
   status = 200
 
 [[redirects]]
-  from = "/api/dict"
-  to = "/.netlify/functions/dict"
-  status = 200
-
-[[redirects]]
   from = "/api/session"
   to = "/.netlify/functions/session"
   status = 200

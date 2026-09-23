@@ -7,7 +7,7 @@ exports.handler = async (event) => {
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify({
       origin,
-      features: { qrUpload: true, onlineDict: true },
+      features: { qrUpload: true, onlineDict: false },
     }),
   };
 };

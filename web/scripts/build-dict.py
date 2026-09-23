@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
-"""生成 web/public/data/dict-3500.json（中考 + 高考 + 雅思）。
+"""生成 web/public/data/dict-3500.json（中考 + 高考 + 雅思 + 专四 + 专八）。
 
 数据来源（均为开源/公开词库）：
   1. 中考/高考：https://github.com/C3H3-AI/vocab-wordbank
-     - junior.json / senior.json 提供词性 + 中文释义
-     - gaokao-*.json / primary.json 提供音标
-  2. 雅思：https://github.com/kajweb/dict （有道雅思词汇书）
-     - 提供音标、词性、中文释义
-
-运行：cd web && python3 scripts/build-dict.py
+  2. 雅思/专四/专八：https://github.com/kajweb/dict （有道词汇书）
 """
 import base64
 import io
@@ -22,6 +17,8 @@ import zipfile
 CTX = ssl._create_unverified_context()
 GH_API = 'https://api.github.com/repos/C3H3-AI/vocab-wordbank/contents/wordbanks/'
 IELTS_ZIP = 'https://raw.githubusercontent.com/kajweb/dict/master/book/1521164657744_IELTS_2.zip'
+LEVEL4_ZIP = 'https://raw.githubusercontent.com/kajweb/dict/master/book/1521164625401_Level4luan_2.zip'
+LEVEL8_ZIP = 'https://raw.githubusercontent.com/kajweb/dict/master/book/1521164650006_Level8luan_2.zip'
 OUT = os.path.join(os.path.dirname(__file__), '..', 'public', 'data', 'dict-3500.json')
 
 MARKERS = ['vt', 'vi', 'adj', 'adv', 'prep', 'conj', 'pron', 'num', 'art', 'int', 'aux', 'abbr', 'det', 'n', 'v', 'a']
@@ -31,7 +28,7 @@ NEXT_RE = re.compile(r'\s+(?=(?:%s)\.\s+)' % '|'.join(MARKERS))
 
 def http_get(url):
     req = urllib.request.Request(url, headers={'User-Agent': 'readvocab-build'})
-    return urllib.request.urlopen(req, context=CTX, timeout=90).read()
+    return urllib.request.urlopen(req, context=CTX, timeout=120).read()
 
 
 def fetch_wordbank(name):
@@ -149,10 +146,10 @@ def build_base():
     return out
 
 
-def merge_ielts(out):
-    raw = http_get(IELTS_ZIP)
+def merge_youdao_zip(out, zip_url, inner_name):
+    raw = http_get(zip_url)
     zf = zipfile.ZipFile(io.BytesIO(raw))
-    data = zf.read('IELTS_2.json').decode('utf-8')
+    data = zf.read(inner_name).decode('utf-8')
     added = 0
     for line in data.splitlines():
         line = line.strip()
@@ -195,8 +192,9 @@ def merge_ielts(out):
 def main():
     out = build_base()
     print('中考/高考词条：', len(out))
-    added = merge_ielts(out)
-    print('新增雅思词条：', added)
+    print('新增雅思词条：', merge_youdao_zip(out, IELTS_ZIP, 'IELTS_2.json'))
+    print('新增专四词条：', merge_youdao_zip(out, LEVEL4_ZIP, 'Level4luan_2.json'))
+    print('新增专八词条：', merge_youdao_zip(out, LEVEL8_ZIP, 'Level8luan_2.json'))
     out = {k: out[k] for k in sorted(out)}
     with open(OUT, 'w', encoding='utf-8') as f:
         json.dump(out, f, ensure_ascii=False, separators=(',', ':'))
