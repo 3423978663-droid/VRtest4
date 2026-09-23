@@ -86,6 +86,26 @@
     </div>
   </div>
 
+  <!-- 照片确认/旋转/裁剪 -->
+  <div class="modal" id="editModal" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-card modal-edit">
+      <button class="close" id="editCloseBtn">×</button>
+      <h2>确认 / 调整照片</h2>
+      <p class="muted small" id="editHint">正在读取照片…</p>
+      <div class="edit-stage"><canvas id="editCanvas"></canvas></div>
+      <div class="edit-tools">
+        <button class="btn" id="rotateLeftBtn">↺ 左转</button>
+        <button class="btn" id="rotateRightBtn">↻ 右转</button>
+        <button class="btn" id="cropBtn">框选裁剪</button>
+        <button class="btn" id="editResetBtn">还原</button>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-primary" id="editConfirmBtn">确认使用这张照片</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 手动记录（词库没有的词） -->
   <div class="modal" id="manualRecordModal" hidden>
     <div class="modal-backdrop" data-close="manualRecord"></div>

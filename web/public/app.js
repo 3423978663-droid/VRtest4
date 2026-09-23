@@ -15,6 +15,11 @@
   let currentResult = null;
   let currentQuery = null;
   let qrPollTimer = null;
+  let editImg = null;
+  let editCanvas = null;
+  let cropRect = null;
+  let cropping = false;
+  let cropStart = null;
 
   function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({
@@ -148,6 +153,7 @@
         nat: { w: 0, h: 0 },
         words: [],
         ocr: 'pending',
+        confirmed: false,
       });
     });
     showViewer();
@@ -182,7 +188,7 @@
       img.nat = { w: el.naturalWidth || 0, h: el.naturalHeight || 0 };
       if (!img.nat.w || !img.nat.h) return;
       layoutActive();
-      if (img.ocr === 'pending' && !img._prepared) {
+      if (img.confirmed && img.ocr === 'pending' && !img._prepared) {
         img._prepared = true;
         prepareImage(img);
       }
@@ -193,6 +199,8 @@
     renderWords();
     renderThumbstrip();
     updateOcrStatus();
+
+    if (!img.confirmed) openImageEditor(img);
   }
 
   function layoutActive() {
@@ -325,6 +333,153 @@
     } catch (e) {
       enqueueOCR(img);
     }
+  }
+
+  // ---------- 照片确认 / 旋转 / 裁剪 / 压缩 ----------
+  function rotateCanvas90(src, dir) {
+    const w = src.width, h = src.height;
+    const c = document.createElement('canvas');
+    c.width = h; c.height = w;
+    const x = c.getContext('2d');
+    x.translate(h / 2, w / 2);
+    x.rotate(dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+    x.drawImage(src, -w / 2, -h / 2);
+    return c;
+  }
+
+  function drawEdit() {
+    const cv = $('editCanvas');
+    if (!cv || !editCanvas) return;
+    const x = cv.getContext('2d');
+    x.clearRect(0, 0, cv.width, cv.height);
+    x.drawImage(editCanvas, 0, 0);
+    if (cropRect) {
+      x.strokeStyle = '#2563eb';
+      x.lineWidth = Math.max(2, Math.round(cv.width / 300));
+      x.strokeRect(cropRect.x, cropRect.y, cropRect.w, cropRect.h);
+    }
+  }
+
+  function setEditCanvas(c) {
+    editCanvas = c;
+    cropRect = null;
+    cropping = false;
+    cropStart = null;
+    const cv = $('editCanvas');
+    cv.width = c.width;
+    cv.height = c.height;
+    drawEdit();
+  }
+
+  function editPoint(e) {
+    const cv = $('editCanvas');
+    const r = cv.getBoundingClientRect();
+    const cx = e.clientX != null ? e.clientX : e.touches[0].clientX;
+    const cy = e.clientY != null ? e.clientY : e.touches[0].clientY;
+    const x = Math.min(cv.width, Math.max(0, (cx - r.left) * (cv.width / r.width)));
+    const y = Math.min(cv.height, Math.max(0, (cy - r.top) * (cv.height / r.height)));
+    return { x, y };
+  }
+
+  async function openImageEditor(img) {
+    editImg = img;
+    $('editModal').hidden = false;
+    $('editHint').textContent = '正在读取照片…';
+    try {
+      const c = await loadImageToCanvas(img.thumbUrl || img.url, 2400);
+      setEditCanvas(c);
+      $('editHint').textContent = '方向不对就点左转/右转；需要裁边就点“框选裁剪”，然后在图上拖动。';
+    } catch (e) {
+      $('editHint').textContent = '照片读取失败，请换一张。';
+    }
+  }
+
+  function rotateEdit(dir) {
+    if (!editCanvas) return;
+    setEditCanvas(rotateCanvas90(editCanvas, dir));
+  }
+
+  function resetEdit() {
+    if (!editImg) return;
+    openImageEditor(editImg);
+  }
+
+  function applyCrop() {
+    if (!editCanvas || !cropRect) return;
+    const x = Math.round(cropRect.x), y = Math.round(cropRect.y);
+    const w = Math.round(cropRect.w), h = Math.round(cropRect.h);
+    if (w < 10 || h < 10) { cropRect = null; drawEdit(); return; }
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.getContext('2d').drawImage(editCanvas, x, y, w, h, 0, 0, w, h);
+    setEditCanvas(c);
+    $('cropBtn').textContent = '框选裁剪';
+    $('editHint').textContent = '已裁剪，确认没问题就点“确认使用这张照片”。';
+  }
+
+  function toggleCrop() {
+    if (!editCanvas) return;
+    if (cropRect) { applyCrop(); return; }
+    cropping = true;
+    cropStart = null;
+    cropRect = null;
+    drawEdit();
+    $('cropBtn').textContent = '确认裁剪';
+    $('editHint').textContent = '请在图片上拖拽框选要保留的区域。';
+  }
+
+  function onEditPointerDown(e) {
+    if (!cropping || !editCanvas) return;
+    cropStart = editPoint(e);
+    cropRect = null;
+    drawEdit();
+  }
+
+  function onEditPointerMove(e) {
+    if (!cropping || !cropStart || !editCanvas) return;
+    const p = editPoint(e);
+    cropRect = {
+      x: Math.min(cropStart.x, p.x),
+      y: Math.min(cropStart.y, p.y),
+      w: Math.abs(p.x - cropStart.x),
+      h: Math.abs(p.y - cropStart.y),
+    };
+    drawEdit();
+  }
+
+  function onEditPointerUp() {
+    if (!cropping) return;
+    cropping = false;
+    cropStart = null;
+    if (cropRect && cropRect.w > 10 && cropRect.h > 10) {
+      $('editHint').textContent = '已框选区域，点“确认裁剪”生效。';
+    } else {
+      cropRect = null;
+      drawEdit();
+      $('editHint').textContent = '框选太小，请重新拖拽。';
+    }
+  }
+
+  async function confirmEdit() {
+    const img = editImg;
+    if (!img || !editCanvas) return;
+    if (cropRect) applyCrop();
+    try {
+      const url = await canvasToBlobUrl(editCanvas);
+      img.thumbUrl = img.thumbUrl || img.url;
+      img.url = url;
+      img.nat = { w: editCanvas.width, h: editCanvas.height };
+      img.confirmed = true;
+      img._prepared = true;
+      $('editModal').hidden = true;
+      if (img === activeImage()) {
+        const el = $('image');
+        el.onload = () => layoutActive();
+        el.src = url;
+      }
+      editImg = null; editCanvas = null; cropRect = null; cropping = false;
+      prepareImage(img);
+    } catch (e) {}
   }
 
   // ---------- 图片缩放与平移 ----------
@@ -652,7 +807,7 @@
 
   function loadRemoteImage(url) {
     const id = newImageId();
-    images.push({ id, url, thumbUrl: url, name: '手机上传', nat: { w: 0, h: 0 }, words: [], ocr: 'pending' });
+    images.push({ id, url, thumbUrl: url, name: '手机上传', nat: { w: 0, h: 0 }, words: [], ocr: 'pending', confirmed: false });
     showViewer();
     selectImage(id);
   }
@@ -682,6 +837,22 @@
   });
 
   $('newImageBtn').addEventListener('click', () => $('fileInput').click());
+
+  // 照片确认/旋转/裁剪
+  $('rotateLeftBtn').addEventListener('click', () => rotateEdit(-1));
+  $('rotateRightBtn').addEventListener('click', () => rotateEdit(1));
+  $('cropBtn').addEventListener('click', toggleCrop);
+  $('editResetBtn').addEventListener('click', resetEdit);
+  $('editConfirmBtn').addEventListener('click', confirmEdit);
+  $('editCloseBtn').addEventListener('click', () => {
+    $('editModal').hidden = true;
+    editImg = null; editCanvas = null; cropRect = null; cropping = false;
+  });
+  const editCv = $('editCanvas');
+  editCv.addEventListener('pointerdown', onEditPointerDown);
+  editCv.addEventListener('pointermove', onEditPointerMove);
+  editCv.addEventListener('pointerup', onEditPointerUp);
+  editCv.addEventListener('pointercancel', onEditPointerUp);
 
   $('zoomIn').addEventListener('click', () => zoomBy(1.25));
   $('zoomOut').addEventListener('click', () => zoomBy(0.8));
