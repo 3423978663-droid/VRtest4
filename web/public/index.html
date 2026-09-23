@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2563eb">
+  <title>阅读背词</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">📖 阅读背词</div>
+    <div class="actions">
+      <span class="badge" id="countBadge">本次收获：0</span>
+      <button class="btn btn-primary" id="exportBtn" disabled>导出 PDF</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="viewer-pane" id="viewerPane">
+      <div class="empty" id="emptyState">
+        <div class="empty-icon">📷</div>
+        <h2>上传英语阅读题照片</h2>
+        <p>可一次选择多张照片 · 自动识别单词 · 点击即可查词（内置中考/高考/雅思词库）</p>
+        <div class="upload-actions">
+          <button class="btn btn-primary" id="directUploadBtn">上传照片（可多选）</button>
+          <button class="btn" id="qrUploadBtn">手机扫码上传</button>
+          <input type="file" id="fileInput" accept="image/*" multiple hidden>
+        </div>
+        <div class="manual">
+          <input type="text" id="manualInput" placeholder="或者手动输入一个英文单词查词" autocomplete="off">
+          <button class="btn" id="manualBtn">查词</button>
+        </div>
+        <p class="muted small">也可以把多张图片直接拖到这里上传</p>
+      </div>
+
+      <div class="viewer" id="viewer" hidden>
+        <div class="viewer-toolbar">
+          <button class="icon-btn" id="zoomOut" title="缩小">−</button>
+          <button class="icon-btn" id="zoomIn" title="放大">＋</button>
+          <button class="icon-btn" id="zoomFit" title="适应窗口">适应</button>
+          <span class="ocr-status" id="ocrStatus">准备识别…</span>
+          <button class="btn btn-ghost" id="manualWordBtn">手动查词</button>
+          <button class="btn btn-ghost" id="newImageBtn">添加图片</button>
+        </div>
+        <div class="stage-area" id="stageArea">
+          <div class="stage" id="stage">
+            <div class="img-wrap" id="imgWrap">
+              <img id="image" alt="阅读题照片">
+              <div class="overlays" id="overlays"></div>
+            </div>
+          </div>
+        </div>
+        <div class="thumbstrip" id="thumbstrip"></div>
+      </div>
+    </section>
+
+    <aside class="words-pane">
+      <div class="pane-head">
+        <h2>本次收获</h2>
+        <span class="muted" id="paneCount">0 个</span>
+      </div>
+      <ul class="word-list" id="wordList"></ul>
+      <div class="pane-empty" id="paneEmpty">查到的单词点「加入本次收获」后会出现在这里。</div>
+    </aside>
+  </main>
+
+  <!-- 单词卡片 -->
+  <div class="modal" id="cardModal" hidden>
+    <div class="modal-backdrop" data-close="card"></div>
+    <div class="modal-card">
+      <button class="close" data-close="card">×</button>
+      <div id="cardContent"></div>
+    </div>
+  </div>
+
+  <!-- 二维码 -->
+  <div class="modal" id="qrModal" hidden>
+    <div class="modal-backdrop" data-close="qr"></div>
+    <div class="modal-card modal-sm">
+      <button class="close" data-close="qr">×</button>
+      <h2>手机扫码上传</h2>
+      <p class="muted" id="qrHint">手机扫码后拍照上传，电脑端会自动收到并识别。</p>
+      <div class="qr-box" id="qrBox"></div>
+      <p class="muted small">扫码后手机拍照/选图上传，电脑端会自动收到并识别。</p>
+    </div>
+  </div>
+
+  <!-- 打印导出区 -->
+  <div id="printArea"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

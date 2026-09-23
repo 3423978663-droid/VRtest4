@@ -1,0 +1,34 @@
+[build]
+  publish = "web/public"
+  functions = "web/netlify/functions"
+
+# 让前端继续使用 /api/* 短路径，由云函数接管。
+[[redirects]]
+  from = "/api/info"
+  to = "/.netlify/functions/info"
+  status = 200
+
+[[redirects]]
+  from = "/api/dict"
+  to = "/.netlify/functions/dict"
+  status = 200
+
+[[redirects]]
+  from = "/api/session"
+  to = "/.netlify/functions/session"
+  status = 200
+
+[[redirects]]
+  from = "/api/session/*"
+  to = "/.netlify/functions/session?id=:splat"
+  status = 200
+
+[[redirects]]
+  from = "/api/upload/*"
+  to = "/.netlify/functions/upload?id=:splat"
+  status = 200
+
+[[redirects]]
+  from = "/api/photo/*"
+  to = "/.netlify/functions/photo?id=:splat"
+  status = 200

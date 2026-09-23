@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>上传照片</title>
+  <style>
+    :root { --primary:#2563eb; --muted:#7a8194; }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+      font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+      background:#f6f7fb; color:#1f2430; padding:24px;
+    }
+    .card { background:#fff; border-radius:20px; padding:30px 26px; width:min(420px,100%); text-align:center; box-shadow:0 8px 30px rgba(30,41,59,.08); }
+    h1 { font-size:22px; margin:0 0 6px; }
+    p { color:var(--muted); font-size:14px; margin:0 0 22px; }
+    .btn {
+      display:block; width:100%; margin-bottom:12px; padding:14px; border:1px solid #e6e8f0;
+      background:#fff; color:var(--primary); border-radius:12px; font-size:16px; cursor:pointer;
+    }
+    .btn.primary { background:var(--primary); color:#fff; border-color:var(--primary); }
+    #status { margin-top:18px; font-size:14px; color:var(--muted); min-height:20px; }
+    #status.ok { color:#16a34a; }
+    #status.err { color:#dc2626; }
+    input { display:none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>📷 上传阅读题照片</h1>
+    <p>拍照或选择相册里的照片，上传后电脑端会自动收到并识别。</p>
+
+    <button class="btn primary" id="cameraBtn">拍照上传</button>
+    <button class="btn" id="galleryBtn">从相册选择</button>
+
+    <input type="file" id="cameraInput" accept="image/*" capture="environment">
+    <input type="file" id="galleryInput" accept="image/*">
+
+    <div id="status">正在准备…</div>
+  </div>
+
+  <script>
+    (() => {
+      const params = new URLSearchParams(location.search);
+      const session = params.get('session');
+      const statusEl = document.getElementById('status');
+      const cameraBtn = document.getElementById('cameraBtn');
+      const galleryBtn = document.getElementById('galleryBtn');
+      const cameraInput = document.getElementById('cameraInput');
+      const galleryInput = document.getElementById('galleryInput');
+
+      if (!session) {
+        statusEl.textContent = '缺少会话参数，请重新扫码。';
+        statusEl.className = 'err';
+        return;
+      }
+
+      cameraBtn.addEventListener('click', () => cameraInput.click());
+      galleryBtn.addEventListener('click', () => galleryInput.click());
+
+      cameraInput.addEventListener('change', (e) => upload(e.target.files[0]));
+      galleryInput.addEventListener('change', (e) => upload(e.target.files[0]));
+
+      // 压缩照片后再上传：更快、更省流量，也能避免图片过大上传失败。
+      function compress(file, maxDim, quality) {
+        return new Promise((resolve, reject) => {
+          const url = URL.createObjectURL(file);
+          const img = new Image();
+          img.onload = () => {
+            try {
+              let w = img.naturalWidth || 0;
+              let h = img.naturalHeight || 0;
+              if (!w || !h) throw new Error('无法读取图片');
+              const scale = Math.min(1, maxDim / Math.max(w, h));
+              w = Math.max(1, Math.round(w * scale));
+              h = Math.max(1, Math.round(h * scale));
+              const canvas = document.createElement('canvas');
+              canvas.width = w;
+              canvas.height = h;
+              canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+              canvas.toBlob((blob) => {
+                URL.revokeObjectURL(url);
+                if (blob) resolve(blob);
+                else reject(new Error('图片压缩失败'));
+              }, 'image/jpeg', quality);
+            } catch (e) {
+              URL.revokeObjectURL(url);
+              reject(e);
+            }
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('无法读取图片'));
+          };
+          img.src = url;
+        });
+      }
+
+      async function upload(file) {
+        if (!file) return;
+        statusEl.textContent = '正在处理照片…';
+        statusEl.className = '';
+        try {
+          const blob = await compress(file, 2200, 0.85);
+          statusEl.textContent = '上传中…';
+          const res = await fetch('/api/upload/' + encodeURIComponent(session), {
+            method: 'POST',
+            headers: { 'Content-Type': 'image/jpeg' },
+            body: blob
+          });
+          const text = await res.text();
+          let data = {};
+          try { data = JSON.parse(text); } catch (e) {}
+          if (res.ok && data.ok) {
+            statusEl.textContent = '✅ 上传成功，电脑端即将显示照片。';
+            statusEl.className = 'ok';
+          } else {
+            const detail = data.error || (text ? text.slice(0, 120) : '');
+            throw new Error(detail || ('服务器返回 ' + res.status));
+          }
+        } catch (e) {
+          statusEl.textContent = '上传失败：' + (e.message || '网络错误');
+          statusEl.className = 'err';
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

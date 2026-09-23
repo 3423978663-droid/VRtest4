@@ -1,0 +1,9 @@
+{
+  "name": "readvocab-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "阅读背词 —— 本地网页版（拍照/扫码上传 → OCR 点词 → 查词 → 导出 PDF）",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
