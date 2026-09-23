@@ -1,5 +1,5 @@
 // 读取扫码上传的照片，返回给电脑端浏览器显示。
-const { getStore } = require('@netlify/blobs');
+const { connectLambda, getStore } = require('@netlify/blobs');
 
 const STORE_NAME = 'readvocab-sessions';
 
@@ -31,6 +31,7 @@ exports.handler = async (event) => {
   const id = getId(event);
   if (!id) return error(400, 'bad id');
 
+  connectLambda(event);
   const store = getStore({ name: STORE_NAME });
   const metaText = await store.get('meta:' + id, { type: 'text' });
   if (!metaText) return error(404, 'not found');

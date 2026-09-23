@@ -1,5 +1,5 @@
 // 扫码上传会话：创建会话 / 查询照片是否已上传。
-const { getStore } = require('@netlify/blobs');
+const { connectLambda, getStore } = require('@netlify/blobs');
 const crypto = require('crypto');
 
 const STORE_NAME = 'readvocab-sessions';
@@ -52,6 +52,7 @@ async function cleanup(store) {
 }
 
 exports.handler = async (event) => {
+  connectLambda(event);
   const store = getStore({ name: STORE_NAME });
 
   if (event.httpMethod === 'POST') {

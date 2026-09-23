@@ -1,5 +1,5 @@
 // 扫码上传：接收手机拍的照片字节，暂存到 Netlify Blobs。
-const { getStore } = require('@netlify/blobs');
+const { connectLambda, getStore } = require('@netlify/blobs');
 
 const STORE_NAME = 'readvocab-sessions';
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -46,6 +46,7 @@ exports.handler = async (event) => {
   const rawType = String(event.headers['content-type'] || event.headers['Content-Type'] || 'image/jpeg').toLowerCase();
   const type = rawType.includes('png') ? 'image/png' : rawType.includes('webp') ? 'image/webp' : 'image/jpeg';
 
+  connectLambda(event);
   const store = getStore({ name: STORE_NAME });
   await store.set('photo:' + id, buf);
   await store.set('meta:' + id, JSON.stringify({ type, createdAt: Date.now() }));
